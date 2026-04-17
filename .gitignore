@@ -235,3 +235,10 @@ python/dotnet-ref
 
 # Generated filtered solution files (created by eng/scripts/New-FilteredSolution.ps1)
 dotnet/filtered-*.slnx
+/.idea/.gitignore
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/ms-agent-framework.iml
+/.idea/inspectionProfiles/Project_Default.xml
+/.vscode/tasks-and-contexts.json
+/.idea/vcs.xml

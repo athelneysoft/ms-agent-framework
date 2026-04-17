@@ -60,6 +60,32 @@ export function RunWorkflowButton({
 }: RunWorkflowButtonProps) {
   const [showModal, setShowModal] = useState(false);
 
+  /**
+   * Build the workflow input payload from schema defaults and enum fallbacks.
+   *
+   * This preserves the existing "run immediately" path for workflows that have
+   * no configurable inputs while keeping the default payload generation in one place.
+   */
+  const buildDefaultData = (): Record<string, unknown> => {
+    const defaultData: Record<string, unknown> = {};
+
+    if (inputSchema?.type === "string" && inputSchema.default) {
+      defaultData.input = inputSchema.default;
+    } else if (inputSchema?.type === "object" && inputSchema.properties) {
+      Object.entries(inputSchema.properties).forEach(
+        ([key, schema]: [string, JSONSchemaProperty]) => {
+          if (schema.default !== undefined) {
+            defaultData[key] = schema.default;
+          } else if (schema.enum && schema.enum.length > 0) {
+            defaultData[key] = schema.enum[0];
+          }
+        }
+      );
+    }
+
+    return defaultData;
+  };
+
   // Handle escape key to close modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -90,7 +116,7 @@ export function RunWorkflowButton({
 
     if (inputSchema.type === "string") {
       return {
-        needsInput: !inputSchema.default,
+        needsInput: true,
         hasDefaults: !!inputSchema.default,
         fieldCount: 1,
         canRunDirectly: !!inputSchema.default,
@@ -126,53 +152,31 @@ export function RunWorkflowButton({
     };
   }, [inputSchema]);
 
+  /**
+   * Handle the primary workflow action.
+   *
+   * Workflows with editable inputs should open the configuration dialog even when
+   * every field has a default, so users can review and override the prefilled values.
+   */
   const handleDirectRun = () => {
     if (workflowState === "running" && onCancel) {
       onCancel();
-    } else if (inputAnalysis.canRunDirectly) {
-      // Build default data
-      const defaultData: Record<string, unknown> = {};
-
-      if (inputSchema?.type === "string" && inputSchema.default) {
-        defaultData.input = inputSchema.default;
-      } else if (inputSchema?.type === "object" && inputSchema.properties) {
-        Object.entries(inputSchema.properties).forEach(
-          ([key, schema]: [string, JSONSchemaProperty]) => {
-            if (schema.default !== undefined) {
-              defaultData[key] = schema.default;
-            } else if (schema.enum && schema.enum.length > 0) {
-              defaultData[key] = schema.enum[0];
-            }
-          }
-        );
-      }
-
-      onRun(defaultData);
-    } else {
+    } else if (inputAnalysis.needsInput) {
       setShowModal(true);
+    } else {
+      onRun(buildDefaultData());
     }
   };
 
+  /**
+   * Handle resume actions from a saved checkpoint.
+   *
+   * The existing direct-run behavior is preserved for workflows without configurable
+   * inputs. Workflows with inputs still open the configuration dialog first.
+   */
   const handleRunFromCheckpoint = (checkpointId: string) => {
     if (inputAnalysis.canRunDirectly) {
-      // Build default data
-      const defaultData: Record<string, unknown> = {};
-
-      if (inputSchema?.type === "string" && inputSchema.default) {
-        defaultData.input = inputSchema.default;
-      } else if (inputSchema?.type === "object" && inputSchema.properties) {
-        Object.entries(inputSchema.properties).forEach(
-          ([key, schema]: [string, JSONSchemaProperty]) => {
-            if (schema.default !== undefined) {
-              defaultData[key] = schema.default;
-            } else if (schema.enum && schema.enum.length > 0) {
-              defaultData[key] = schema.enum[0];
-            }
-          }
-        );
-      }
-
-      onRun(defaultData, checkpointId);
+      onRun(buildDefaultData(), checkpointId);
     } else {
       // TODO: Pass checkpoint ID to modal for custom inputs
       setShowModal(true);
@@ -204,7 +208,7 @@ export function RunWorkflowButton({
       <Loader2 className="w-4 h-4 animate-spin" />
     ) : workflowState === "error" ? (
       <RotateCcw className="w-4 h-4" />
-    ) : inputAnalysis.needsInput && !inputAnalysis.canRunDirectly ? (
+    ) : inputAnalysis.needsInput ? (
       <Settings className="w-4 h-4" />
     ) : (
       <Play className="w-4 h-4" />
@@ -221,8 +225,6 @@ export function RunWorkflowButton({
       : workflowState === "error"
       ? "Retry"
       : inputAnalysis.fieldCount === 0
-      ? "Run Workflow"
-      : inputAnalysis.canRunDirectly
       ? "Run Workflow"
       : "Configure & Run";
 
